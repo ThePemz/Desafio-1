@@ -1,38 +1,47 @@
 #include <Adafruit_LiquidCrystal.h>  // Biblioteca para la pantalla LCD
 
-
 // Pines para la pantalla LCD
 Adafruit_LiquidCrystal lcd(0);
 
+// Pines para los pulsadores
+const int pinStart = 2;     // Pulsador para iniciar la adquisición
+const int pinInfo = 4;      // Pulsador para solicitar información
 
-int botInicio = 2, botMostrar = 4; //Variables para identificar donde entran los pines de los botones.
+// Variables para gestionar los estados
+bool acquiring = false;  // Indica si está en proceso de adquisición
+bool processing = false; // Indica si está en proceso de procesamiento
 
+// Variables para los datos de la señal
+int* signalData;  // Puntero al array de datos de la señal
+long numSamples = 0;        // Contador de muestras
+int arraySize = 10;       // Tamaño inicial del array dinámico
 
-//Variables para el almacenaje dinamico de datos.
-int datoPos = 300; //Cantidad de datos maximos posibles a guardar segun la memoria.
-int* datos; //inicializacion de array dinamico para el almacenaje de datos.
-int tamanoArray = 10, cantDato = 0; //Auxiliares para el manejo del arreglo.
+// Variables para la frecuencia y amplitud
+unsigned long lastTime = 0;
+unsigned long signalPeriod = 0;
+float frequency = 0.0;
+float amplitude = 0.0;
 
+// Variables para el debounce
+unsigned long lastButtonPressTime = 0;  // Tiempo de la última pulsación
+unsigned long debounceDelay = 50;       // Tiempo de debounce para evitar múltiples lecturas
 
-//Declaracion de variables para el almacenaje de valores hallados.
-int min = 1023, max = 0;
-float amplitud = 0, frecuencia = 0;
+// Variables para gestionar tiempos con millis
+unsigned long processingEndTime = 0;    // Tiempo en que debe finalizar el procesamiento
 
+// Umbrales para la identificación de forma de onda
+const int thresholdSin = 30;     // Tolerancia para identificar señal senoidal
+const int thresholdSquare = 100; // Tolerancia para identificar señal cuadrada
 
-long promDato = 0; //Variable para el promedio de datos enviados en 1 segundo.
+int minSignal = 1023;
+int maxSignal = 0;
+float sum = 0;
 
-
-unsigned long tiempo; //Variable para almacenar el tiempo actual.
-unsigned long tiempoInicial; //Variable de tiempo inicial.
-
-
+// Setup inicial
 void setup() {
-  
-  encontrarPromDatos();
-  
-  //Definicion de modo de los pines de entrada.
-  pinMode(botInicio, INPUT);
-  pinMode(botMostrar, INPUT);
+  Serial.begin(12000);
+  pinMode(pinStart, INPUT);
+  pinMode(pinInfo, INPUT);
   
   lcd.begin(16, 2);  // Iniciar la pantalla LCD
   lcd.print("Informa2 S.A.S");
@@ -42,202 +51,165 @@ void setup() {
   delay(1000);
   
   lcd.clear();
-  
-  datos = new int[tamanoArray]; //Dimensionar el arreglo.
-  tiempoInicial = micros(); //Analizar tiempo actual.
+  // Asignar memoria dinámica para el array de señal
+  signalData = new int[arraySize];
 }
 
-//Funcion para encontrar el promedio de datos registrados en 1 segundo.
-void encontrarPromDatos(){
-  int lecAnt = 0; //Variable auxiliar.
-  tiempoInicial = micros(); //Analizar tiempo actual.
-  
-  //Bucle para hallar datos.
-  while(tiempo < tiempoInicial+1000000){
-    int lec = analogRead(A0); //Identificar señal ingresada.
-    
-    //Si el valor cambio en el tiempo.
-  	if(lec != lecAnt){
-      tiempo = micros();
-      promDato += 1;
-  	}
-  }   
-}
-
+// Loop principal
 void loop() {
-  int valor = analogRead(A0); //Identificar señal ingresada.
-  
-  procesarDato(valor);
-  
-  tiempo = micros();
-  
-  if(tiempo >= tiempoInicial+1000000){
-   	obtenerMin();
-    obtenerMax();
-    obtenerAmplitud();
-    obtenerFrecuencia(); 
-    
-    impresionLCD();
-    
-    reiniciarInfo();
-    
-    tiempoInicial = micros(); //Analizar tiempo actual.
-  }
-  
-  delayMicroseconds((1000000/datoPos));
-}
+  unsigned long currentTime = millis();  // Obtener el tiempo actual
 
-//Función para procesar la señal y almacenar en el array dinámico.
-void procesarDato(int valor){
+  bool stateStart = digitalRead(pinStart);
+  bool stateInfo = digitalRead(pinInfo);  
   
-  //Si llenamos todos los datos disponibles del array.
-  if(tamanoArray == datoPos){
-    
-    //Desplazar todos los elementos una posición hacia la izquierda.
-  	for (int i = 0; i < tamanoArray - 1; i++) {
-    	datos[i] = datos[i + 1];
-  	}
-
-    cantDato--;
-  }
-  
-  //Si el número de muestras supera el tamaño del array, redimensionarlo.
-  if(cantDato >= tamanoArray) {
-      reestructurar();
-  }
-  
-  datos[cantDato] = valor;  //Guardar valor de la señal en el array.
-
-  cantDato++;
-}
-
-// Función para obtener el valor mínimo de la señal
-void obtenerMin(){
-  
-  //Analizar el minimo de todos los datos.
-  for(int i = 0; i < cantDato; i++){
-    if (datos[i] < min){
-      min = datos[i];
-    }
-  }
-}
-
-// Función para obtener el valor máximo de la señal
-int obtenerMax(){
-  
-  //Analizar el maximo de todos los datos.
-  for(int i = 0; i < cantDato; i++){
-    if (datos[i] > max){
-      max = datos[i];
-    }
-  }
-}
-
-void obtenerAmplitud(){
-  amplitud = max - min;
-}
-
-void obtenerFrecuencia(){
-  float umbral = (amplitud / 2.0) + min;
-  
-  for (int i = 1; i < cantDato; i++) {
-    // Detectar un cruce por cero (de positivo a negativo o negativo a positivo)
-    if ((datos[i - 1] > umbral && datos[i] <= umbral) || (datos[i - 1] < umbral && datos[i] >= umbral)){
-      frecuencia += 0.5;
-    }
-  }
-}
-
-//Funcion para identificar la forma de la señal.
-String formaSenal(){
-  // Variables para contar transiciones entre máximo y mínimo
-  int transicionesBruscas = 0;
-  int transicionesLineales = 0;
-  
-  // Analizar el tipo de transición entre valores de la señal
-  for (int i = 1; i < cantDato; i++) {
-    int diff = datos[i] - datos[i - 1];
-
-    // Identificar si los cambios son bruscos (propios de una señal cuadrada)
-    if (abs(diff) > (amplitud * 0.9)) {  // 90% de la amplitud indica un cambio abrupto
-        transicionesBruscas++;
-    }
-    // Identificar si los cambios son más suaves y lineales (propios de una señal triangular)
-    else if (abs(diff) > (amplitud * 0.1) && abs(diff) < (amplitud * 0.9)) {  // Cambios intermedios
-        transicionesLineales++;
+  // Verificación del botón de inicio con debounce
+  if (stateStart && (currentTime - lastButtonPressTime > debounceDelay)) {
+    lastButtonPressTime = currentTime;  // Actualiza el tiempo de pulsación
+    if (!acquiring && !processing) {
+      lcd.clear();
+      lcd.print("Acquiring...");
+      acquiring = true;
+      resetData();  // Reiniciar datos anteriores
     }
   }
 
-  // Clasificar según las transiciones
-  if (transicionesBruscas > (cantDato * 0.4)) {
-    return "Onda Cuadrada";
-  } else if (transicionesLineales > (cantDato * 0.6)) {
-    return "Onda Triangular";
-  } else {
-    return "Onda Senoidal";
+  // Verificación del botón de información con debounce
+  if (stateInfo && (currentTime - lastButtonPressTime > debounceDelay)) {
+    lastButtonPressTime = currentTime;  // Actualiza el tiempo de pulsación
+    if (acquiring) {
+      acquiring = false;  // Pausar adquisición
+      processing = true;  // Iniciar procesamiento
+      lcd.clear();
+      lcd.print("Processing...");
+      displaySignalInfo();  // Mostrar la información de la señal
+      processingEndTime = currentTime + 3000;  // Procesar durante 3 segundos
+    }
   }
+
+  // Si está en adquisición
+  if (acquiring) {
+    int signalValue = analogRead(A0);  // Leer señal analógica
+    processSignal(signalValue);        // Procesar la señal
+    calculateFrequency(signalValue);   // Calcular la frecuencia de la señal
+  }
+
+  // Manejar el final del procesamiento sin delay
+  if (processing && currentTime >= processingEndTime) {
+    processing = false;
+    lcd.clear();
+    lcd.print("Resuming...");
+    delay(1000);
+    lcd.clear();
+    acquiring = true;  // Reanudar adquisición
+  }
+}
+
+// Función para procesar la señal y almacenar en el array dinámico
+void processSignal(int value) {
+  // Si el número de muestras supera el tamaño del array, redimensionarlo
+  if (numSamples >= arraySize) {
+    resizeArray();
+  }
+  
+  signalData[numSamples] = value;  // Guardar valor de la señal en el array
+  numSamples+=1;
+}
+
+// Función para calcular la frecuencia de la señal
+void calculateFrequency(int signalValue) {
+  if (signalValue > (getMinSignal(signalValue) + getMaxSignal(signalValue)) / 2) {
+    unsigned long currentTime = millis();
+    signalPeriod = currentTime - lastTime;
+    if (signalPeriod > 0) {
+      frequency = 1000.0 / signalPeriod;  // Frecuencia en Hz
+    }
+    lastTime = currentTime;
+  }
+  
+  // Calcular amplitud en Voltios (basado en el valor ADC)
+  amplitude = (getMaxSignal(signalValue) - getMinSignal(signalValue)) * (5.0 / 1023.0);  // Amplitud en voltios
 }
 
 // Función para mostrar la información de la señal
-void impresionLCD() {
+void displaySignalInfo() {
   lcd.clear();
   
   lcd.setCursor(0, 0);
   lcd.print("Min: ");
-  lcd.print(min*(5.0/1023.0));
+  lcd.print(minSignal);
   
   lcd.setCursor(0, 1);
   lcd.print("Max: ");
-  lcd.print(max*(5.0/1023.0));
+  lcd.print(maxSignal);
   delay(2000);
   
   lcd.clear();
+  lcd.print("Avg: ");
+  lcd.print(sum/numSamples);
+  delay(2000);
   
-  lcd.setCursor(0, 0);
+  lcd.clear();
   lcd.print("Freq: ");
-  lcd.print(frecuencia);
-  lcd.print("Hz");
-  
-  lcd.setCursor(0, 1);
-  lcd.print("Amp: ");
-  lcd.print(amplitud*(5.0/1023.0));
-  lcd.print("V");
+  lcd.print(frequency);
+  lcd.print(" Hz");
   delay(2000);
   
   lcd.clear();
-  
-  lcd.setCursor(0, 0);
-  lcd.print(formaSenal());
+  lcd.print("Amp: ");
+  lcd.print(amplitude);
+  lcd.print(" V");
   delay(2000);
 }
 
-//Función para redimensionar el array dinámico.
-void reestructurar() {
-  
-  //Si el número de muestras supera la cota de memoria disponible.
-  if(tamanoArray * 2 >= datoPos){
-  	tamanoArray = datoPos;
-  }else{
-  	tamanoArray *= 2; //Aumentar el arreglo de uno en uno.
+// Función para obtener el valor mínimo de la señal
+int getMinSignal(int value) {
+  if (value < minSignal) {
+    minSignal = value;
   }
-  
-  int* auxArray = new int[tamanoArray]; //Crear nuevo array auxiliar más grande.
-  
-  //Copiar datos del array antiguo al nuevo.
-  for (int i = 0; i < cantDato; i++) {
-    auxArray[i] = datos[i];
-  }
-  
-  delete[] datos; //Liberar la memoria antigua.
-  
-  //Asignar el nuevo array al puntero original.
-  datos = auxArray;
+  return minSignal;
 }
 
-//Función para reiniciar los datos de la señal
-void reiniciarInfo() {
-  max = 0;
-  min = 0;
-  frecuencia=0;
-  amplitud=0;
+// Función para obtener el valor máximo de la señal
+int getMaxSignal(int value) {
+  if (value > maxSignal) {
+    maxSignal = value;
+  }
+  return maxSignal;
+}
+
+// Función para obtener el promedio de la señal
+float getAverageSignal(int value) {
+  sum += value;
+  return sum / numSamples;
+}
+
+
+// Función para redimensionar el array dinámico
+void resizeArray() {
+  arraySize *= 2;  // Doblar el tamaño del array
+  int* newArray = new int[arraySize];  // Crear nuevo array más grande
+  
+  // Copiar datos del array antiguo al nuevo
+  for (long i = 0; i < numSamples; i++) {
+    newArray[i] = signalData[i];
+  }
+  
+  // Liberar la memoria antigua
+  delete[] signalData;
+  
+  // Asignar el nuevo array al puntero original
+  signalData = newArray;
+}
+
+// Función para reiniciar los datos de la señal
+void resetData() {
+  numSamples = 0;
+  lastTime = 0;
+  frequency = 0;
+  amplitude = 0;
+}
+
+// Liberar la memoria dinámica cuando se termina
+void freeMemory() {
+  delete[] signalData;
 }
