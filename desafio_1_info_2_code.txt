@@ -2,47 +2,82 @@ int botInicio = 2, botMostrar = 4; //Variables para identificar donde entran los
 
 
 //Variables para el almacenaje dinamico de datos.
-int datoPos = 500; //Cantidad de datos maximos posibles a guardar segun la memoria.
+int datoPos = 300; //Cantidad de datos maximos posibles a guardar segun la memoria.
 int* datos; //inicializacion de array dinamico para el almacenaje de datos.
 int tamanoArray = 10, cantDato = 0; //Auxiliares para el manejo del arreglo.
 
 
-int min = 0, max = 0, amplitud = 0, frecuencia = 0; //Declaracion de variables para el almacenaje de valores hallados.
+//Declaracion de variables para el almacenaje de valores hallados.
+int min = 1023, max = 0;
+float amplitud = 0, frecuencia = 0;
 
 
-int saltoDato = 0; //Variables auxiliares.
+long promDato = 0; //Variable para el promedio de datos enviados en 1 segundo.
 
 
 unsigned long tiempo; //Variable para almacenar el tiempo actual.
+unsigned long tiempoInicial; //Variable de tiempo inicial.
 
 
 void setup() {
+  
+  encontrarPromDatos();
+  
   //Definicion de modo de los pines de entrada.
   pinMode(botInicio, INPUT);
   pinMode(botMostrar, INPUT);
   
   delay(2000); //Tiempo estimado mientras toda la electronica incia y las señales se estabilizan.
   
-  datos = new int[tamañoArray]; //Dimensionar el arreglo.
+  datos = new int[tamanoArray]; //Dimensionar el arreglo.
+  tiempoInicial = micros(); //Analizar tiempo actual.
+}
+
+//Funcion para encontrar el promedio de datos registrados en 1 segundo.
+void encontrarPromDatos(){
+  int lecAnt = 0; //Variable auxiliar.
+  tiempoInicial = micros(); //Analizar tiempo actual.
+  
+  //Bucle para hallar datos.
+  while(tiempo < tiempoInicial+1000000){
+    int lec = analogRead(A0); //Identificar señal ingresada.
+    
+    //Si el valor cambio en el tiempo.
+  	if(lec != lecAnt){
+      tiempo = micros();
+      promDato += 1;
+  	}
+  }   
 }
 
 void loop() {
+  int valor = analogRead(A0); //Identificar señal ingresada.
   
-  if(saltoDato == (33203/datoPos)){
-    int valor = anologRead(A0);
-    procesarDato(valor);
-    saltoDato = 0;
+  procesarDato(valor);
+  
+  tiempo = micros();
+  
+  if(tiempo >= tiempoInicial+1000000){
+   	obtenerMin();
+    obtenerMax();
+    obtenerAmplitud();
+    obtenerFrecuencia(); 
+    
+    
+    
+    tiempoInicial = micros(); //Analizar tiempo actual.
   }
   
-  saltoDato++;
-  
+  delayMicroseconds(1000000/datoPos);
 }
 
 //Función para procesar la señal y almacenar en el array dinámico.
-void procesarDato(int valor) {
+void procesarDato(int valor){
+  
   //Si llenamos todos los datos disponibles del array.
   if(tamanoArray == datoPos){
-    // Desplazar todos los elementos una posición hacia la izquierda.
+    
+    //Desplazar todos los elementos una posición hacia la izquierda.
   	for (int i = 0; i < tamanoArray - 1; i++) {
     	datos[i] = datos[i + 1];
   	}
@@ -60,14 +95,51 @@ void procesarDato(int valor) {
   cantDato++;
 }
 
+// Función para obtener el valor mínimo de la señal
+void obtenerMin(){
+  
+  //Analizar el minimo de todos los datos.
+  for(int i = 0; i < cantDato; i++){
+    if (datos[i] < min){
+      min = datos[i];
+    }
+  }
+}
+
+// Función para obtener el valor máximo de la señal
+int obtenerMax(){
+  
+  //Analizar el maximo de todos los datos.
+  for(int i = 0; i < cantDato; i++){
+    if (datos[i] > max){
+      max = datos[i];
+    }
+  }
+}
+
+void obtenerAmplitud(){
+  amplitud = max - min;
+}
+
+void obtenerFrecuencia(){
+  float umbral = (amplitud / 2.0) + min;
+  
+  for (int i = 1; i < cantDato; i++) {
+    // Detectar un cruce por cero (de positivo a negativo o negativo a positivo)
+    if ((datos[i - 1] > umbral && datos[i] <= umbral) || (datos[i - 1] < umbral && datos[i] >= umbral)){
+      frecuencia += 0.5;
+    }
+  }
+}
+
 //Función para redimensionar el array dinámico.
 void reestructurar() {
   
   //Si el número de muestras supera la cota de memoria disponible.
-  if(tamañoArray * 2 >= datoPos){
+  if(tamanoArray * 2 >= datoPos){
   	tamanoArray = datoPos;
   }else{
-  	tamonoArray *= 2; //Aumentar el arreglo de uno en uno.
+  	tamanoArray *= 2; //Aumentar el arreglo de uno en uno.
   }
   
   int* auxArray = new int[tamanoArray]; //Crear nuevo array auxiliar más grande.
@@ -85,7 +157,7 @@ void reestructurar() {
 
 //Función para reiniciar los datos de la señal
 void resetData() {
-  cantDatos=0;
+  cantDato=0;
   frecuencia=0;
   amplitud=0;
 }
