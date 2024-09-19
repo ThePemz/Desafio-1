@@ -1,83 +1,91 @@
-#include <Adafruit_LiquidCrystal.h>  // Biblioteca para la pantalla LCD
+int botInicio = 2, botMostrar = 4; //Variables para identificar donde entran los pines de los botones.
 
-// Pines para la pantalla LCD
-Adafruit_LiquidCrystal lcd(0);
 
-// Variables globales
-const int pinEntrada = A0;          // Pin donde se conecta la señal analógica
-float vRef = 5.0;                   // Voltaje de referencia (5V en este ejemplo)
-int umbral = 512;                   // Umbral de cruce (la mitad del valor máximo de 1023)
-unsigned long tiempoInicio;
-unsigned long tiempoMuestreo = 1000000;  // Tiempo de muestreo en microsegundos (1 segundo)
-int ciclos = 0;                     // Contador de ciclos completos
-int valorAnterior = 0;              // Almacena el valor anterior de la señal
-bool cruzoUmbral = false;           // Indica si la señal ha cruzado el umbral
+//Variables para el almacenaje dinamico de datos.
+int datoPos = 500; //Cantidad de datos maximos posibles a guardar segun la memoria.
+int* datos; //inicializacion de array dinamico para el almacenaje de datos.
+int tamanoArray = 10, cantDato = 0; //Auxiliares para el manejo del arreglo.
 
-// Variables para medición de voltaje
-float voltajeMax = 0;
-float voltajeMin = vRef;
 
-// Variables para desfase (en caso de una señal desplazada respecto al umbral)
-float offsetVoltaje = 0;
+int min = 0, max = 0, amplitud = 0, frecuencia = 0; //Declaracion de variables para el almacenaje de valores hallados.
+
+
+int saltoDato = 0; //Variables auxiliares.
+
+
+unsigned long tiempo; //Variable para almacenar el tiempo actual.
+
 
 void setup() {
-  Serial.begin(9600);               // Inicializar la comunicación serial
-  tiempoInicio = micros();           // Guardar el tiempo de inicio en microsegundos
-  valorAnterior = analogRead(pinEntrada);  // Leer el valor inicial
+  //Definicion de modo de los pines de entrada.
+  pinMode(botInicio, INPUT);
+  pinMode(botMostrar, INPUT);
+  
+  delay(2000); //Tiempo estimado mientras toda la electronica incia y las señales se estabilizan.
+  
+  datos = new int[tamañoArray]; //Dimensionar el arreglo.
 }
 
 void loop() {
-  // Leer el valor actual de la señal
-  int valorActual = analogRead(pinEntrada);
   
-  // Convertir el valor del ADC a voltios
-  float voltajeActual = (valorActual * vRef) / 1023.0;
-
-  // Actualizar voltajes máximo y mínimo
-  if (voltajeActual > voltajeMax) voltajeMax = voltajeActual;
-  if (voltajeActual < voltajeMin) voltajeMin = voltajeActual;
-
-  // Detectar cruce por el umbral (desfase de voltaje respecto al umbral)
-  if (valorAnterior < umbral && valorActual >= umbral) {
-    if (!cruzoUmbral) {             // Detectar un cruce de subida
-      ciclos++;                     // Contar un ciclo
-      cruzoUmbral = true;
-    }
-  } else if (valorAnterior > umbral && valorActual <= umbral) {
-    cruzoUmbral = false;            // Detectar que la señal volvió a bajar
+  if(saltoDato == (33203/datoPos)){
+    int valor = anologRead(A0);
+    procesarDato(valor);
+    saltoDato = 0;
   }
+  
+  saltoDato++;
+  
+}
 
-  // Actualizar el valor anterior
-  valorAnterior = valorActual;
+//Función para procesar la señal y almacenar en el array dinámico.
+void procesarDato(int valor) {
+  //Si llenamos todos los datos disponibles del array.
+  if(tamanoArray == datoPos){
+    // Desplazar todos los elementos una posición hacia la izquierda.
+  	for (int i = 0; i < tamanoArray - 1; i++) {
+    	datos[i] = datos[i + 1];
+  	}
 
-  // Verificar si ha pasado el tiempo de muestreo
-  if (micros() - tiempoInicio >= tiempoMuestreo) {
-    // Calcular la frecuencia (ciclos por segundo)
-    float frecuencia = (float)ciclos / (tiempoMuestreo / 1000000.0);
-
-    // Calcular amplitud (diferencia entre el máximo y mínimo voltaje)
-    float amplitud = voltajeMax - voltajeMin;
-
-    // Calcular el desfase de voltaje (diferencia entre umbral y valor medio)
-    offsetVoltaje = (voltajeMax + voltajeMin) / 2 - vRef/2;
-
-    // Mostrar los resultados en la consola serial
-    Serial.print("Frecuencia: ");
-    Serial.print(frecuencia);
-    Serial.println(" Hz");
-
-    Serial.print("Amplitud: ");
-    Serial.print(amplitud);
-    Serial.println(" V");
-
-    Serial.print("Desfase de Voltaje: ");
-    Serial.print(offsetVoltaje);
-    Serial.println(" V");
-
-    // Reiniciar las variables para la próxima medición
-    ciclos = 0;
-    voltajeMax = 0;
-    voltajeMin = vRef;
-    tiempoInicio = micros();
+    cantDato--;
   }
+  
+  //Si el número de muestras supera el tamaño del array, redimensionarlo.
+  if(cantDato >= tamanoArray) {
+      reestructurar();
+  }
+  
+  datos[cantDato] = valor;  //Guardar valor de la señal en el array.
+
+  cantDato++;
+}
+
+//Función para redimensionar el array dinámico.
+void reestructurar() {
+  
+  //Si el número de muestras supera la cota de memoria disponible.
+  if(tamañoArray * 2 >= datoPos){
+  	tamanoArray = datoPos;
+  }else{
+  	tamonoArray *= 2; //Aumentar el arreglo de uno en uno.
+  }
+  
+  int* auxArray = new int[tamanoArray]; //Crear nuevo array auxiliar más grande.
+  
+  //Copiar datos del array antiguo al nuevo.
+  for (int i = 0; i < cantDato; i++) {
+    auxArray[i] = datos[i];
+  }
+  
+  delete[] datos; //Liberar la memoria antigua.
+  
+  //Asignar el nuevo array al puntero original.
+  datos = auxArray;
+}
+
+//Función para reiniciar los datos de la señal
+void resetData() {
+  cantDatos=0;
+  frecuencia=0;
+  amplitud=0;
 }
