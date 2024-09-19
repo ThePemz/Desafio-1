@@ -1,0 +1,26 @@
+unsigned long tiempo;
+const unsigned long tiempoMuestras=1000000;
+long promMuestras = 0;
+
+void setup() {
+  Serial.begin(9600);
+  delay(2000); //Tiempo estimado mientras toda la electronica incia y las señales se estabilizan.
+  
+  int valorAnt = 0;
+  unsigned long tiempoInicial = micros();
+  
+  while(tiempo < tiempoInicial+1000000){
+    int valor = analogRead(A0);
+  	if(valor != valorAnt){
+      tiempo = micros();
+      promMuestras += 1;
+  	}
+  }
+  
+  Serial.println("El promedio de muestras enviadas en un segundo: ");
+  Serial.println(promMuestras);
+  Serial.println(promMuestras/500);
+}
+
+void loop() {
+}
