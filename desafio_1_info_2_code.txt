@@ -1,3 +1,10 @@
+#include <Adafruit_LiquidCrystal.h>  // Biblioteca para la pantalla LCD
+
+
+// Pines para la pantalla LCD
+Adafruit_LiquidCrystal lcd(0);
+
+
 int botInicio = 2, botMostrar = 4; //Variables para identificar donde entran los pines de los botones.
 
 
@@ -27,7 +34,14 @@ void setup() {
   pinMode(botInicio, INPUT);
   pinMode(botMostrar, INPUT);
   
-  delay(2000); //Tiempo estimado mientras toda la electronica incia y las señales se estabilizan.
+  lcd.begin(16, 2);  // Iniciar la pantalla LCD
+  lcd.print("Informa2 S.A.S");
+  delay(2000);
+  lcd.clear();
+  lcd.print("Ready to Start");
+  delay(1000);
+  
+  lcd.clear();
   
   datos = new int[tamanoArray]; //Dimensionar el arreglo.
   tiempoInicial = micros(); //Analizar tiempo actual.
@@ -63,12 +77,14 @@ void loop() {
     obtenerAmplitud();
     obtenerFrecuencia(); 
     
+    impresionLCD();
     
+    reiniciarInfo();
     
     tiempoInicial = micros(); //Analizar tiempo actual.
   }
   
-  delayMicroseconds(1000000/datoPos);
+  delayMicroseconds((1000000/datoPos));
 }
 
 //Función para procesar la señal y almacenar en el array dinámico.
@@ -132,6 +148,69 @@ void obtenerFrecuencia(){
   }
 }
 
+//Funcion para identificar la forma de la señal.
+String formaSenal(){
+  // Variables para contar transiciones entre máximo y mínimo
+  int transicionesBruscas = 0;
+  int transicionesLineales = 0;
+  
+  // Analizar el tipo de transición entre valores de la señal
+  for (int i = 1; i < cantDato; i++) {
+    int diff = datos[i] - datos[i - 1];
+
+    // Identificar si los cambios son bruscos (propios de una señal cuadrada)
+    if (abs(diff) > (amplitud * 0.9)) {  // 90% de la amplitud indica un cambio abrupto
+        transicionesBruscas++;
+    }
+    // Identificar si los cambios son más suaves y lineales (propios de una señal triangular)
+    else if (abs(diff) > (amplitud * 0.1) && abs(diff) < (amplitud * 0.9)) {  // Cambios intermedios
+        transicionesLineales++;
+    }
+  }
+
+  // Clasificar según las transiciones
+  if (transicionesBruscas > (cantDato * 0.4)) {
+    return "Onda Cuadrada";
+  } else if (transicionesLineales > (cantDato * 0.6)) {
+    return "Onda Triangular";
+  } else {
+    return "Onda Senoidal";
+  }
+}
+
+// Función para mostrar la información de la señal
+void impresionLCD() {
+  lcd.clear();
+  
+  lcd.setCursor(0, 0);
+  lcd.print("Min: ");
+  lcd.print(min*(5.0/1023.0));
+  
+  lcd.setCursor(0, 1);
+  lcd.print("Max: ");
+  lcd.print(max*(5.0/1023.0));
+  delay(2000);
+  
+  lcd.clear();
+  
+  lcd.setCursor(0, 0);
+  lcd.print("Freq: ");
+  lcd.print(frecuencia);
+  lcd.print("Hz");
+  
+  lcd.setCursor(0, 1);
+  lcd.print("Amp: ");
+  lcd.print(amplitud*(5.0/1023.0));
+  lcd.print("V");
+  delay(2000);
+  
+  lcd.clear();
+  
+  lcd.setCursor(0, 0);
+  lcd.print(formaSenal());
+  delay(2000);
+}
+
 //Función para redimensionar el array dinámico.
 void reestructurar() {
   
@@ -156,8 +235,9 @@ void reestructurar() {
 }
 
 //Función para reiniciar los datos de la señal
-void resetData() {
-  cantDato=0;
+void reiniciarInfo() {
+  max = 0;
+  min = 0;
   frecuencia=0;
   amplitud=0;
 }
