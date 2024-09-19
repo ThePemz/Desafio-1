@@ -1,26 +1,37 @@
+#include <Adafruit_LiquidCrystal.h>  // Biblioteca para la pantalla LCD
+
+// Pines para la pantalla LCD
+Adafruit_LiquidCrystal lcd(0);
 unsigned long tiempo;
 const unsigned long tiempoMuestras=1000000;
-long promMuestras = 0;
+int cantMuestras=500;
+int cont=0;
+int* muestras;
 
 void setup() {
   Serial.begin(9600);
-  delay(2000); //Tiempo estimado mientras toda la electronica incia y las señales se estabilizan.
-  
-  int valorAnt = 0;
-  unsigned long tiempoInicial = micros();
-  
-  while(tiempo < tiempoInicial+1000000){
-    int valor = analogRead(A0);
-  	if(valor != valorAnt){
-      tiempo = micros();
-      promMuestras += 1;
-  	}
-  }
-  
-  Serial.println("El promedio de muestras enviadas en un segundo: ");
-  Serial.println(promMuestras);
-  Serial.println(promMuestras/500);
+  muestras = new int[cantMuestras];
 }
 
 void loop() {
+  int valor = analogRead(A0);
+  if(cont < cantMuestras){
+    if(cont == 0){
+      muestras[cont] = valor;
+      cont++;
+      tiempo = micros();
+    }else if(valor!=muestras[cont-1]){
+      muestras[cont] = valor;
+      cont++;
+      tiempo = micros();
+    }
+  }else{
+  	//if(tiempo >= tiempoMuestras){
+    for(int i=0; i<cantMuestras; i++){
+      Serial.print(i);
+      Serial.print("muestra: ");
+      Serial.println(muestras[i]/*(5.0 / 1023.0)*/);
+    }
+    return;
+  }
 }
