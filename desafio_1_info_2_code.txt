@@ -2,36 +2,82 @@
 
 // Pines para la pantalla LCD
 Adafruit_LiquidCrystal lcd(0);
-unsigned long tiempo;
-const unsigned long tiempoMuestras=1000000;
-int cantMuestras=500;
-int cont=0;
-int* muestras;
+
+// Variables globales
+const int pinEntrada = A0;          // Pin donde se conecta la señal analógica
+float vRef = 5.0;                   // Voltaje de referencia (5V en este ejemplo)
+int umbral = 512;                   // Umbral de cruce (la mitad del valor máximo de 1023)
+unsigned long tiempoInicio;
+unsigned long tiempoMuestreo = 1000000;  // Tiempo de muestreo en microsegundos (1 segundo)
+int ciclos = 0;                     // Contador de ciclos completos
+int valorAnterior = 0;              // Almacena el valor anterior de la señal
+bool cruzoUmbral = false;           // Indica si la señal ha cruzado el umbral
+
+// Variables para medición de voltaje
+float voltajeMax = 0;
+float voltajeMin = vRef;
+
+// Variables para desfase (en caso de una señal desplazada respecto al umbral)
+float offsetVoltaje = 0;
 
 void setup() {
-  Serial.begin(9600);
-  muestras = new int[cantMuestras];
+  Serial.begin(9600);               // Inicializar la comunicación serial
+  tiempoInicio = micros();           // Guardar el tiempo de inicio en microsegundos
+  valorAnterior = analogRead(pinEntrada);  // Leer el valor inicial
 }
 
 void loop() {
-  int valor = analogRead(A0);
-  if(cont < cantMuestras){
-    if(cont == 0){
-      muestras[cont] = valor;
-      cont++;
-      tiempo = micros();
-    }else if(valor!=muestras[cont-1]){
-      muestras[cont] = valor;
-      cont++;
-      tiempo = micros();
+  // Leer el valor actual de la señal
+  int valorActual = analogRead(pinEntrada);
+  
+  // Convertir el valor del ADC a voltios
+  float voltajeActual = (valorActual * vRef) / 1023.0;
+
+  // Actualizar voltajes máximo y mínimo
+  if (voltajeActual > voltajeMax) voltajeMax = voltajeActual;
+  if (voltajeActual < voltajeMin) voltajeMin = voltajeActual;
+
+  // Detectar cruce por el umbral (desfase de voltaje respecto al umbral)
+  if (valorAnterior < umbral && valorActual >= umbral) {
+    if (!cruzoUmbral) {             // Detectar un cruce de subida
+      ciclos++;                     // Contar un ciclo
+      cruzoUmbral = true;
     }
-  }else{
-  	//if(tiempo >= tiempoMuestras){
-    for(int i=0; i<cantMuestras; i++){
-      Serial.print(i);
-      Serial.print("muestra: ");
-      Serial.println(muestras[i]/*(5.0 / 1023.0)*/);
-    }
-    return;
+  } else if (valorAnterior > umbral && valorActual <= umbral) {
+    cruzoUmbral = false;            // Detectar que la señal volvió a bajar
+  }
+
+  // Actualizar el valor anterior
+  valorAnterior = valorActual;
+
+  // Verificar si ha pasado el tiempo de muestreo
+  if (micros() - tiempoInicio >= tiempoMuestreo) {
+    // Calcular la frecuencia (ciclos por segundo)
+    float frecuencia = (float)ciclos / (tiempoMuestreo / 1000000.0);
+
+    // Calcular amplitud (diferencia entre el máximo y mínimo voltaje)
+    float amplitud = voltajeMax - voltajeMin;
+
+    // Calcular el desfase de voltaje (diferencia entre umbral y valor medio)
+    offsetVoltaje = (voltajeMax + voltajeMin) / 2 - vRef/2;
+
+    // Mostrar los resultados en la consola serial
+    Serial.print("Frecuencia: ");
+    Serial.print(frecuencia);
+    Serial.println(" Hz");
+
+    Serial.print("Amplitud: ");
+    Serial.print(amplitud);
+    Serial.println(" V");
+
+    Serial.print("Desfase de Voltaje: ");
+    Serial.print(offsetVoltaje);
+    Serial.println(" V");
+
+    // Reiniciar las variables para la próxima medición
+    ciclos = 0;
+    voltajeMax = 0;
+    voltajeMin = vRef;
+    tiempoInicio = micros();
   }
 }
